@@ -8,17 +8,36 @@
 #include "ADS1299.h"
 #include "configs.h"
 
+#define OPENBCI_DATA_BUFFER_SIZE 50
+extern bool streaming_enabled ;
+uint8_t sample_counter = 0;
+
+
+
+
+
+//ads1299_register_packet ads1299_register_buffer = {};
+ads1299_data_packet ads1299_data_buffer = {};
+
+openbci_data_packet openbci_data_buffer[OPENBCI_DATA_BUFFER_SIZE] = {{}};
+
+uint16_t openbci_data_buffer_head = 0;
+uint16_t openbci_data_buffer_tail = 0;
+
+
+
 void ADS1299::setup(int _DRDY, int _CS, int RESET_PIN, int mode){
     DRDY = _DRDY;
     CS = _CS;
-    RESET_pin = RESET_PIN;
+    //RESET_pin = RESET_PIN;
     pinMode(DRDY, INPUT);
     pinMode(CS, OUTPUT);
-    pinMode(RESET_pin, OUTPUT);
+    //pinMode(RESET_pin, OUTPUT);
     
-    
-    SPI.begin();
-    SPI.beginTransaction(SPISettings(1000000,MSBFIRST,SPI_MODE1));
+    SPI.begin(ADS1299_PIN_SCK, ADS1299_PIN_MISO, ADS1299_PIN_MOSI, ADS1299_PIN_SS);
+    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE1));
+    //SPI.begin();
+    //SPI.beginTransaction(SPISettings(1000000,MSBFIRST,SPI_MODE1));
 }
 
 //System Commands
@@ -129,7 +148,7 @@ void ADS1299::getID() {
     byte data = SPI.transfer(0x00); // byte to read (hopefully 0b???11110)
     SPI.transfer(_RDATAC); //turn read data continuous back on
     digitalWrite(CS, HIGH); //Low to communicated
-    Serial.println(data, BIN);
+    Serial.println(data, HEX);
 }
 
 void ADS1299::STARTUP(){
@@ -191,7 +210,8 @@ void ADS1299::init_ADS_4_test(){
     WREG(GPIO, 0b00000000);
 }
 
-void ADS1299::RDATA_update(){
+void ADS1299::
+RDATA_update(){
     if(digitalRead(DRDY) == LOW){
         //DRDY debug
         //Serial.println("LOW");
@@ -228,7 +248,7 @@ void ADS1299::RDATA_update(){
         
         // changed to get data from 4 channels of ads1299-4
         // i=0;i<9 was original
-        for (int i=1;i<5; i++) {
+        for (int i=1;i<9; i++) {
             Serial.print(outputvolts[i]);
             //Serial.print(output[i]);
             if(i!=4) Serial.print("\t");
@@ -357,5 +377,47 @@ void ADS1299::printRegisterName(byte _address) {
     }
     else if(_address == CONFIG4){
         Serial.print("CONFIG4, ");
+    }
+}
+
+// String-Byte converters for RREG and WREG
+void ads1299_drdy_interrupt(void) {
+    //ads1299_data_packet buffer = {};
+
+    digitalWrite(ADS1299_PIN_SS, LOW);
+    for(int i = 0; i<27; i++){
+            //for(j=0;j<3;j++)
+            //{
+            byte dataByte = SPI.transfer(0x00);
+                //dataPacket = (dataPacket<<8) | dataByte; // constructing the 24 bit binary
+            //}
+            // if(i<3)
+            // {
+
+            // }
+            if(i>2) ads1299_data_buffer.channel_data[i] = dataByte;
+            //ads1299_data_buffer.
+            //dataPacket = 0;
+        }
+    //SPI.transfer(&ads1299_data_buffer);
+    //SPI.transferBytes(&buffer,&ads1299_data_buffer,sizeof(ads1299_data_packet));
+    //SPI.transfer()
+    
+    digitalWrite(ADS1299_PIN_SS, HIGH);
+
+    //ads1299_read_buffer(&ads1299_data_buffer, sizeof(ads1299_data_packet));
+    
+    if (streaming_enabled)
+    {
+        openbci_data_buffer[openbci_data_buffer_tail].header = 0xA0;
+        openbci_data_buffer[openbci_data_buffer_tail].sample_number = sample_counter++;
+      
+        memcpy(&openbci_data_buffer[openbci_data_buffer_tail].channel_data, &ads1299_data_buffer.channel_data, sizeof(ads1299_data_buffer.channel_data));
+     
+        memset(&openbci_data_buffer[openbci_data_buffer_tail].auxiliary_data, 0x00, sizeof(openbci_data_buffer[openbci_data_buffer_tail].auxiliary_data));
+      
+        openbci_data_buffer[openbci_data_buffer_tail].footer = 0xC0;
+
+        if (++openbci_data_buffer_tail >= 50) openbci_data_buffer_tail = 0;
     }
 }

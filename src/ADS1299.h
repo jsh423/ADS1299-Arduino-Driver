@@ -13,6 +13,14 @@
 #include "Definitions.h"
 #include "configs.h"
 
+#define ADS1299_PIN_DRDY 27
+
+#define ADS1299_PIN_SCK 14
+#define ADS1299_PIN_MISO 12
+#define ADS1299_PIN_MOSI 13
+#define ADS1299_PIN_SS 26
+
+
 class ADS1299 {
 public:
     int mode = 1;
@@ -38,6 +46,9 @@ public:
     
     void WREG(byte _address, byte _value); //
     void WREG(byte _address, byte _value, byte _numRegistersMinusOne); //
+
+    /// @brief 
+    //static void drdy_interrupt();//中断读取数据
     
     void updateData(); // RDATAC
     void RDATA_update(); // RDATA
@@ -47,5 +58,25 @@ public:
     void init_ADS_8();// initialize configs for 8 channel version
     void init_ADS_4_test();
 };
+void ads1299_drdy_interrupt(void) ;
+typedef struct openbci_data_packet
+{
+    uint8_t header;
+
+    uint8_t sample_number;
+
+    uint8_t channel_data[24];
+
+    uint8_t auxiliary_data[6];
+
+    uint8_t footer;
+} __attribute__ ((packed)) openbci_data_packet;
+
+typedef struct ads1299_data_packet
+{
+    uint32_t stat : 24;
+
+    uint8_t channel_data[24];
+} __attribute__ ((packed)) ads1299_data_packet;
 
 #endif
